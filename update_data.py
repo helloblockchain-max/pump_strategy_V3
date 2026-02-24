@@ -1,17 +1,17 @@
 """
-update_data.py - Runs on GitHub Actions every 6 hours
-=====================================================
+update_data.py - Runs on GitHub Actions every hour
+===================================================
 1. Fetches Pump.fun daily revenue from DefiLlama API
 2. Fetches Pump token daily prices from CoinGecko API
 3. Merges and exports as data.json for the frontend
 """
 
 import requests
-import csv
 import json
 import os
 import sys
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 
 sys.stdout.reconfigure(encoding='utf-8')
 
@@ -20,43 +20,89 @@ HEADERS = {
     'Accept': 'application/json',
 }
 
+def fetch_with_retry(url, headers, timeout=30, retries=3, delay=5):
+    """带重试的 HTTP GET 请求"""
+    for attempt in range(retries):
+        try:
+            r = requests.get(url, headers=headers, timeout=timeout)
+            if r.status_code == 200:
+                return r
+            elif r.status_code == 429:
+                wait = delay * (attempt + 1) * 2  # 指数退避
+                print(f"    Rate limited (429), waiting {wait}s before retry...")
+                time.sleep(wait)
+            else:
+                print(f"    HTTP {r.status_code}, attempt {attempt+1}/{retries}")
+                time.sleep(delay)
+        except Exception as e:
+            print(f"    Error: {e}, attempt {attempt+1}/{retries}")
+            time.sleep(delay)
+    return None
+
 def fetch_and_export():
     print("=== Pump Strategy Auto-Updater ===")
-    print(f"Running at: {datetime.utcnow().isoformat()}Z")
+    now = datetime.now(timezone.utc)
+    print(f"Running at: {now.isoformat()}")
     
     # --- 1. Fetch Revenue (Protocol Revenue: used for PUMP buybacks) ---
     print("Fetching Pump protocol revenue from DefiLlama (buyback-eligible income)...")
-    res_revenue = requests.get(
-        'https://api.llama.fi/summary/fees/Pump?dataType=dailyRevenue',
-        headers=HEADERS,
-        timeout=30
-    )
-    if res_revenue.status_code != 200:
-        print(f"WARN: Revenue fetch failed ({res_revenue.status_code}), using existing data")
-        return False
     
-    revenue_data = res_revenue.json().get('totalDataChart', [])
-    revenue_by_date = {}
-    for ts, rev in revenue_data:
-        d = datetime.utcfromtimestamp(ts).strftime('%Y-%m-%d')
-        revenue_by_date[d] = rev
+    # Try multiple endpoints with fallback
+    endpoints = [
+        ('Pump (parent)', 'https://api.llama.fi/summary/fees/Pump?dataType=dailyRevenue'),
+        ('pump (slug)',   'https://api.llama.fi/summary/fees/pump?dataType=dailyRevenue'),
+    ]
+    
+    res_revenue = None
+    for name, url in endpoints:
+        r = fetch_with_retry(url, HEADERS)
+        if r is not None:
+            res_revenue = r
+            print(f"  ✓ Success via {name}")
+            break
+        else:
+            print(f"  ✗ {name} failed after retries, trying next...")
+    
+    # Fallback: merge sub-protocols individually
+    if res_revenue is None:
+        print("  Trying fallback: merging pump.fun + PumpSwap + Padre sub-protocols...")
+        sub_protocols = ['pump.fun', 'PumpSwap', 'Padre']
+        merged = {}
+        for sp in sub_protocols:
+            r = fetch_with_retry(f'https://api.llama.fi/summary/fees/{sp}?dataType=dailyRevenue', HEADERS)
+            if r is not None:
+                for ts, rev in r.json().get('totalDataChart', []):
+                    d = datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%Y-%m-%d')
+                    merged[d] = merged.get(d, 0) + rev
+                print(f"    ✓ {sp}: OK")
+            else:
+                print(f"    ✗ {sp}: failed after retries")
+        if merged:
+            revenue_by_date = merged
+            print(f"  Merged {len(revenue_by_date)} days from sub-protocols")
+        else:
+            print("WARN: All revenue endpoints failed, using existing data")
+            return False
+    else:
+        revenue_data = res_revenue.json().get('totalDataChart', [])
+        revenue_by_date = {}
+        for ts, rev in revenue_data:
+            d = datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%Y-%m-%d')
+            revenue_by_date[d] = rev
     print(f"  Fetched {len(revenue_by_date)} days of revenue")
     
     # --- 2. Fetch Price ---
     print("Fetching Pump token prices from CoinGecko...")
-    res_price = requests.get(
-        'https://api.coingecko.com/api/v3/coins/pump-fun/market_chart?vs_currency=usd&days=365',
-        headers=HEADERS,
-        timeout=30
-    )
-    if res_price.status_code != 200:
-        print(f"WARN: Price fetch failed ({res_price.status_code}), using existing data")
+    price_url = 'https://api.coingecko.com/api/v3/coins/pump-fun/market_chart?vs_currency=usd&days=365'
+    res_price = fetch_with_retry(price_url, HEADERS, retries=5, delay=10)
+    if res_price is None:
+        print(f"ERROR: Price fetch failed after all retries")
         return False
     
     price_data = res_price.json().get('prices', [])
     price_by_date = {}
     for ts_ms, price in price_data:
-        d = datetime.utcfromtimestamp(ts_ms / 1000).strftime('%Y-%m-%d')
+        d = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).strftime('%Y-%m-%d')
         price_by_date[d] = price
     print(f"  Fetched {len(price_by_date)} days of price data")
     
@@ -80,7 +126,7 @@ def fetch_and_export():
     
     # --- 4. Export ---
     payload = {
-        'last_updated': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+        'last_updated': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
         'raw_data': raw_data
     }
     
@@ -96,4 +142,5 @@ if __name__ == "__main__":
     if success:
         print("✅ Data update successful!")
     else:
-        print("⚠️ Data update had issues, check logs above")
+        print("❌ Data update FAILED, check logs above")
+        sys.exit(1)  # 非零退出码让 GitHub Actions 正确标记为失败

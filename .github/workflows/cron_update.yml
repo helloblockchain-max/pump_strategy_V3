@@ -28,7 +28,25 @@ jobs:
         run: pip install requests
 
       - name: Fetch Latest Data from APIs
+        id: fetch_data
         run: python update_data.py
+
+      - name: Verify data.json was updated
+        run: |
+          echo "=== Verifying data.json ==="
+          if [ ! -f data.json ]; then
+            echo "ERROR: data.json not found!"
+            exit 1
+          fi
+          # Check file size > 100 bytes (not empty/corrupt)
+          SIZE=$(stat -c%s data.json)
+          echo "data.json size: ${SIZE} bytes"
+          if [ "$SIZE" -lt 100 ]; then
+            echo "ERROR: data.json too small (${SIZE} bytes), likely corrupt"
+            exit 1
+          fi
+          # Show last_updated timestamp
+          python3 -c "import json; d=json.load(open('data.json')); print(f'Last updated: {d.get(\"last_updated\",\"N/A\")}'); print(f'Data rows: {len(d.get(\"raw_data\",[]))}')"
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
