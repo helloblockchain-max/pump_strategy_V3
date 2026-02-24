@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pump Strategy Dashboard</title>
+    <!-- ECharts CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="glass-header">
+            <div class="title-section">
+                <h1>PUMP STRATEGY <span>FUNDAMENTAL MOMENTUM</span></h1>
+                <p class="subtitle">Next-gen On-chain Revenue Driven Strategy</p>
+            </div>
+            <div class="update-info">
+                <span class="pulse-dot"></span>
+                <p>Last Updated: <span id="last-updated">--</span></p>
+            </div>
+        </header>
+
+        <!-- Dynamic Parameters Control -->
+        <section class="glass-panel controls-panel">
+            <h2>⚙️ V3 策略参数调节 (Pure Fundamental Momentum)</h2>
+            <p class="strategy-desc">核心逻辑: 营收对数平滑(Log-Smooth) + 加速爆发期判定(Acceleration) + 抛物线自适应止损</p>
+            <div class="controls-grid">
+                <div class="control-group">
+                    <label for="p-ts">自适应止损宽幅基数 (Adaptive Stop Base): <span id="v-ts"
+                            class="highlight">10</span>%</label>
+                    <input type="range" id="p-ts" min="3" max="25" value="10">
+                </div>
+            </div>
+            <p class="hint">拖动滑块体验止损容忍度对策略表现的影响。更宽的止损能滤除回测中的下杀噪音，但单笔风险更大。</p>
+        </section>
+
+        <!-- Metrics Grid -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <h3>总收益率</h3>
+                <p id="m-total-return" class="highlight">--</p>
+            </div>
+            <div class="metric-card">
+                <h3>年化收益率</h3>
+                <p id="m-annual-return" class="highlight">--</p>
+            </div>
+            <div class="metric-card">
+                <h3>夏普比率</h3>
+                <p id="m-sharpe">--</p>
+            </div>
+            <div class="metric-card">
+                <h3>最大回撤</h3>
+                <p id="m-max-drawdown" class="danger">--</p>
+            </div>
+            <div class="metric-card">
+                <h3>胜率</h3>
+                <p id="m-win-rate">--</p>
+            </div>
+            <div class="metric-card">
+                <h3>交易次数</h3>
+                <p id="m-trades">--</p>
+            </div>
+        </div>
+
+        <!-- Main Chart -->
+        <main class="chart-container glass-panel">
+            <h2>资金曲线 (Equity Curve)</h2>
+            <div id="main-chart" class="echarts-dom"></div>
+        </main>
+
+        <!-- History Table -->
+        <section class="history-container glass-panel">
+            <h2>每日回测明细 (Daily History)</h2>
+            <div class="table-wrapper">
+                <table id="history-table">
+                    <thead>
+                        <tr>
+                            <th>交易日期 (Action Date)</th>
+                            <th>标的价格 (Price)</th>
+                            <th>收益归属日 (Rev Date)</th>
+                            <th>Pump收入 (Revenue)</th>
+                            <th>交易动作 (Action)</th>
+                            <th>策略净值 (Equity)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-tbody">
+                        <!-- Rows rendered via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>基于基本面收入动能驱动 | 数据自动更新周期: 6 小时</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
