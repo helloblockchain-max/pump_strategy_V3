@@ -93,7 +93,7 @@ def fetch_and_export():
     
     # --- 2. Fetch Price ---
     print("Fetching Pump token prices from CoinGecko...")
-    price_url = 'https://api.coingecko.com/api/v3/coins/pump-fun/market_chart?vs_currency=usd&days=365'
+    price_url = 'https://api.coingecko.com/api/v3/coins/pump-fun/market_chart?vs_currency=usd&days=3'
     res_price = fetch_with_retry(price_url, HEADERS, retries=5, delay=10)
     if res_price is None:
         print(f"ERROR: Price fetch failed after all retries")
@@ -107,17 +107,32 @@ def fetch_and_export():
     print(f"  Fetched {len(price_by_date)} days of price data")
     
     # --- 3. Merge ---
+    # Load existing data.json to keep historical data
+    out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data.json')
+    data_dict = {}
+    if os.path.exists(out_path):
+        try:
+            with open(out_path, 'r', encoding='utf-8') as f:
+                old_payload = json.load(f)
+                for row in old_payload.get('raw_data', []):
+                    if 'date' in row:
+                        data_dict[row['date']] = row
+            print(f"  Loaded {len(data_dict)} existing days from data.json")
+        except Exception as e:
+            print(f"  Could not load existing data: {e}")
+
     all_dates = sorted(set(price_by_date.keys()) & set(revenue_by_date.keys()))
     
-    raw_data = []
     for d in all_dates:
-        raw_data.append({
+        data_dict[d] = {
             'date': d,
             'price': price_by_date[d],
             'revenue': revenue_by_date[d]
-        })
+        }
     
-    print(f"  Merged: {len(raw_data)} rows")
+    raw_data = [data_dict[k] for k in sorted(data_dict.keys())]
+    
+    print(f"  Merged update: total {len(raw_data)} rows now")
     if len(raw_data) == 0:
         print("ERROR: No merged data, aborting")
         return False
