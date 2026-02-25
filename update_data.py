@@ -11,7 +11,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 sys.stdout.reconfigure(encoding='utf-8')
 
@@ -41,7 +41,9 @@ def fetch_with_retry(url, headers, timeout=30, retries=3, delay=5):
 
 def fetch_and_export():
     print("=== Pump Strategy Auto-Updater ===")
-    now = datetime.now(timezone.utc)
+    # Use UTC+8 for date alignment
+    tz_beijing = timezone(timedelta(hours=8))
+    now = datetime.now(tz_beijing)
     print(f"Running at: {now.isoformat()}")
     
     # --- 1. Fetch Revenue (Protocol Revenue: used for PUMP buybacks) ---
@@ -72,7 +74,7 @@ def fetch_and_export():
             r = fetch_with_retry(f'https://api.llama.fi/summary/fees/{sp}?dataType=dailyRevenue', HEADERS)
             if r is not None:
                 for ts, rev in r.json().get('totalDataChart', []):
-                    d = datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%Y-%m-%d')
+                    d = datetime.fromtimestamp(ts, tz=tz_beijing).strftime('%Y-%m-%d')
                     merged[d] = merged.get(d, 0) + rev
                 print(f"    ✓ {sp}: OK")
             else:
@@ -87,7 +89,7 @@ def fetch_and_export():
         revenue_data = res_revenue.json().get('totalDataChart', [])
         revenue_by_date = {}
         for ts, rev in revenue_data:
-            d = datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%Y-%m-%d')
+            d = datetime.fromtimestamp(ts, tz=tz_beijing).strftime('%Y-%m-%d')
             revenue_by_date[d] = rev
     print(f"  Fetched {len(revenue_by_date)} days of revenue")
     
@@ -102,7 +104,7 @@ def fetch_and_export():
     price_data = res_price.json().get('prices', [])
     price_by_date = {}
     for ts_ms, price in price_data:
-        d = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).strftime('%Y-%m-%d')
+        d = datetime.fromtimestamp(ts_ms / 1000, tz=tz_beijing).strftime('%Y-%m-%d')
         price_by_date[d] = price
     print(f"  Fetched {len(price_by_date)} days of price data")
     
@@ -141,7 +143,7 @@ def fetch_and_export():
     
     # --- 4. Export ---
     payload = {
-        'last_updated': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+        'last_updated': datetime.now(tz_beijing).strftime('%Y-%m-%d %H:%M:%S') + ' UTC+8',
         'raw_data': raw_data
     }
     
