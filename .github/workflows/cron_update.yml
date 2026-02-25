@@ -29,6 +29,7 @@ jobs:
 
       - name: Fetch Latest Data from APIs
         id: fetch_data
+        continue-on-error: true
         run: python update_data.py
 
       - name: Verify data.json was updated

@@ -94,17 +94,17 @@ def fetch_and_export():
     # --- 2. Fetch Price ---
     print("Fetching Pump token prices from CoinGecko...")
     price_url = 'https://api.coingecko.com/api/v3/coins/pump-fun/market_chart?vs_currency=usd&days=3'
-    res_price = fetch_with_retry(price_url, HEADERS, retries=5, delay=10)
-    if res_price is None:
-        print(f"ERROR: Price fetch failed after all retries")
-        return False
+    res_price = fetch_with_retry(price_url, HEADERS, retries=5, delay=15)
     
-    price_data = res_price.json().get('prices', [])
     price_by_date = {}
-    for ts_ms, price in price_data:
-        d = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).strftime('%Y-%m-%d')
-        price_by_date[d] = price
-    print(f"  Fetched {len(price_by_date)} days of price data")
+    if res_price is None:
+        print(f"  WARN: Price fetch failed after all retries, will use existing data")
+    else:
+        price_data = res_price.json().get('prices', [])
+        for ts_ms, price in price_data:
+            d = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).strftime('%Y-%m-%d')
+            price_by_date[d] = price
+        print(f"  Fetched {len(price_by_date)} days of price data")
     
     # --- 3. Merge ---
     # Load existing data.json to keep historical data
@@ -121,14 +121,20 @@ def fetch_and_export():
         except Exception as e:
             print(f"  Could not load existing data: {e}")
 
-    all_dates = sorted(price_by_date.keys())
-    
-    for d in all_dates:
-        data_dict[d] = {
-            'date': d,
-            'price': price_by_date[d],
-            'revenue': revenue_by_date.get(d, 0)
-        }
+    # Update with new data: use all price dates, fill missing revenue with 0
+    if price_by_date:
+        all_dates = sorted(price_by_date.keys())
+        for d in all_dates:
+            data_dict[d] = {
+                'date': d,
+                'price': price_by_date[d],
+                'revenue': revenue_by_date.get(d, data_dict.get(d, {}).get('revenue', 0))
+            }
+    else:
+        # No new price data, just update revenue for existing dates
+        for d in data_dict:
+            if d in revenue_by_date:
+                data_dict[d]['revenue'] = revenue_by_date[d]
     
     raw_data = [data_dict[k] for k in sorted(data_dict.keys())]
     
